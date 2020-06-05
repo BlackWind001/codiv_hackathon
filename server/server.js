@@ -50,7 +50,7 @@ function getTicketData(iparamData, ticketId, bodyData) {
 
       (iparamData.sub_account_credentials).map(function (subAccount) {
         if (subAccountDomain == subAccount.subdomain) {
-          createReply(subAccount, subAccountTicketId, ticketId, ticketStatus, bodyData);
+          createReply(subAccount, subAccountTicketId, ticketId, ticketStatus, bodyData, iparamData);
         }
       });
     } else {
@@ -64,7 +64,7 @@ function getTicketData(iparamData, ticketId, bodyData) {
   });
 }
 
-function createReply(subAccount, subAccountTicketId, ticketId, ticketStatus, bodyData) {
+function createReply(subAccount, subAccountTicketId, ticketId, ticketStatus, bodyData, iparamData) {
   let ticketUrl = `https://${subAccount.subdomain}.freshservice.com/api/v2/tickets/${subAccountTicketId}`;
   let ticketOptions = {
     headers: {
@@ -73,6 +73,7 @@ function createReply(subAccount, subAccountTicketId, ticketId, ticketStatus, bod
     },
     body: JSON.stringify({
       custom_fields: {
+        other_account_domain: iparamData.freshservice_subdomain,
         other_account_ticket_id: `${ticketId}`,
         other_account_ticket_status: ticketStatus
       }
