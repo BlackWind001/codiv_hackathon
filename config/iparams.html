@@ -1,0 +1,376 @@
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <link rel="stylesheet" type="text/css" href="https://static.freshdev.io/fdk/2.0/assets/freshservice.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.0/jquery.min.js"></script>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.0/js/bootstrap.min.js"></script>
+  <script src="https://static.freshdev.io/fdk/2.0/assets/fresh_client.js"></script>
+  <title>Multiple Region Sync up Settings Page</title>
+  <style>
+    #step1,
+    #step2 {
+      padding: 10px;
+    }
+
+    label {
+      font-weight: bold;
+      font-size: 14px;
+    }
+
+    input[type=text],
+    input[type=select] {
+      font-size: 12px !important;
+    }
+
+    .input-group-addon {
+      font-size: 14px !important;
+      border: 0 !important;
+      border-bottom: 1px solid #dadfe3 !important;
+    }
+
+    button#validate1,
+    button#validate2,
+    button#addNewAccount {
+      float: right;
+      margin-left: 10px;
+    }
+
+    .btn {
+      min-width: 0px !important;
+    }
+
+    .loading {
+      position: fixed;
+      margin: auto;
+      top: 10%;
+      left: 0;
+      right: 0;
+      z-index: 999;
+    }
+
+    a {
+      text-decoration: none !important;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div id="alertSuccess" class="alert alert-success" style="display:none;"></div>
+    <div id="alertFailure" class="alert alert-danger" style="display:none;"></div>
+
+    <div class="loading">
+      <center>
+        <i class="fa fa-spinner fa-spin loader" style="font-size:40px;"></i><br><br>
+        <strong>Loading...</strong>
+      </center>
+    </div>
+
+    <div id="step1">
+      <h4><b>Freshservice Authentication</b></h4>
+      <div class="form-group">
+        <label>API Key</label>
+        <input type="text" class="form-control" id="freshservice_apikey" placeholder="Enter freshservice API Key">
+        <small>Please click <a href="https://support.freshdesk.com/support/solutions/articles/215517-how-to-find-your-api-key" target="_new">here</a> to find your apikey.</small>
+      </div>
+      <div class="form-group">
+        <label>Subdomain</label>
+        <div class="input-group">
+          <span class="input-group-addon">https://</span>
+          <input type="text" class="form-control" id="freshservice_subdomain"
+            placeholder="Enter freshservice subdomain">
+          <span class="input-group-addon">.freshservice.com</span>
+        </div>
+        <small>Example: https://<b>subdomain</b>.freshservice.com</small>
+      </div>
+      <div class="form-group">
+        <button id="validate1" class="btn btn-primary">Validate</button>
+      </div>
+    </div>
+
+    <div id="step2">
+      <button id="validate2" class="btn btn-primary">Validate</button>
+      <button id="addNewAccount" class="btn btn-primary"><i class="fa fa-plus"></i> Add Account</button><br><br>
+      <h4><b>Other Freshservice Account Authentication</b></h4>
+      <table class="table table-responsive">
+        <thead>
+          <tr>
+            <th scope="col">API Key</th>
+            <th scope="col">Subdomain</th>
+            <th scope="col">Action</th>
+          </tr>
+        </thead>
+        <tbody id="subAccounts"></tbody>
+      </table>
+    </div>
+  </div>
+</body>
+
+<script>
+  let freshservice_apikey, freshservice_subdomain;
+  let sub_account_credentials = [];
+  let count = 0;
+  let deletedRow = [];
+  let globalAccountValidation = false, subAccountValidation = false;
+
+  $('.loading').hide();
+  $('#step2').hide();
+  $('#step1').show();
+
+  function getConfigs(inputConfigs) {
+    if (inputConfigs.freshservice_apikey && inputConfigs.freshservice_subdomain) {
+      $('#freshservice_apikey').val(inputConfigs.freshservice_apikey);
+      $('#freshservice_subdomain').val(inputConfigs.freshservice_subdomain);
+
+      freshservice_apikey = inputConfigs.freshservice_apikey;
+      freshservice_subdomain = inputConfigs.freshservice_subdomain;
+      sub_account_credentials = inputConfigs.sub_account_credentials;
+
+      $('#validate1').click();
+    }
+  }
+
+  function postConfigs() {
+    return {
+      freshservice_apikey: freshservice_apikey,
+      freshservice_subdomain: freshservice_subdomain,
+      sub_account_credentials: sub_account_credentials
+    };
+  }
+
+  function validate() {
+    if (!globalAccountValidation) {
+      showAlert("step1", "validate1", "alertFailure", "Please validate freshservice account credentials");
+      return false;
+    } else if (!subAccountValidation) {
+      showAlert("step2", "validate2", "alertFailure", "Please validate other freshservice account credentials");
+      return false;
+    } else {
+      return true;
+    }
+  }
+
+  $('#validate1').click(function () {
+    freshservice_apikey = ($('#freshservice_apikey').val()).trim();
+    freshservice_subdomain = ($('#freshservice_subdomain').val()).trim();
+
+    $('#freshservice_apikey').val(freshservice_apikey);
+    $('#freshservice_subdomain').val(freshservice_subdomain);
+
+    if (freshservice_apikey == "") {
+      showAlert("step1", "validate1", "alertFailure", "Please enter Freshservice API key");
+    } else if (freshservice_subdomain == "") {
+      showAlert("step1", "validate1", "alertFailure", "Please enter Freshservice Subdomain");
+    } else {
+      $('.loading').show();
+      $('#step1').css({ opacity: 0.5 });
+      $('#validate1').attr('disabled', true);
+
+      validateGlobalAccountCredentials(freshservice_apikey, freshservice_subdomain);
+    }
+  });
+
+  $('#validate2').click(function () {
+    let emptyValidation = false;
+    sub_account_credentials = [];
+
+    for (let i = 1; i <= count; i++) {
+      if (!(deletedRow.includes(i))) {
+        let subdomain = ($(`#subdomain${i}`).val()).trim();
+        let apikey = ($(`#apikey${i}`).val()).trim();
+
+        $(`#subdomain${i}`).val(subdomain);
+        $(`#apikey${i}`).val(apikey);
+
+        if (subdomain == "" || apikey == "") {
+          $('#alertFailure').text("Fields must be filled out!").show();
+          $('#alertFailure').delay(3000).fadeOut('slow');
+
+          emptyValidation = true;
+          break;
+        } else if (subdomain == freshservice_subdomain) {
+          $('#alertFailure').text("Freshservice Account subdomain should not be present in Other Freshservice Accounts").show();
+          $('#alertFailure').delay(3000).fadeOut('slow');
+
+          emptyValidation = true;
+          break;
+        } else {
+          let currentData = {
+            subdomain: subdomain,
+            apikey: apikey
+          };
+
+          sub_account_credentials.push(currentData);
+        }
+      }
+    }
+
+    if (!emptyValidation) {
+      let subdomainDuplicate = checkDuplicate(sub_account_credentials);
+
+      if (!subdomainDuplicate) {
+        if (sub_account_credentials.length) {
+          $('.loading').show();
+          $('#step2').css({ opacity: 0.5 });
+          $('#validate2').attr('disabled', true);
+
+          let inc = 0;
+
+          validateSubAccountCredentials(sub_account_credentials, inc);
+        } else {
+          $('#alertFailure').text("Please add atleast one account credentials!").show();
+          $('#alertFailure').delay(3000).fadeOut('slow');
+
+          subAccountValidation = false;
+        }
+      } else {
+        $('#alertFailure').text("Only one subdomain should be present!").show();
+        $('#alertFailure').delay(3000).fadeOut('slow');
+
+        subAccountValidation = false;
+      }
+    }
+  });
+
+  $('#addNewAccount').click(function () {
+    subAccountValidation = false;
+
+    addNewAccount();
+  });
+
+  $(document).on('click', '.deleteAccount', function (event) {
+    deletedRow.push(Number(event.currentTarget.id));
+    $(`.${event.currentTarget.id}`).remove();
+  });
+
+  function addNewAccount() {
+    count += 1;
+
+    let tableRow = `<tr class="${count}">`;
+    tableRow += `<td><input type="text" class="form-control" id="apikey${count}" placeholder="Enter API Key"></td>`;
+    tableRow += `<td><div class="input-group"><span class="input-group-addon">https://</span><input type="text" class="form-control" id="subdomain${count}" placeholder="Enter Subdomain"><span class="input-group-addon">.freshservice.com</span></div></td>`;
+    tableRow += `<td style="padding: 15px"><button class="btn btn-danger deleteAccount" id="${count}"><i class="fa fa-trash"></button></td>`;
+    tableRow += `</tr>`;
+
+    $('#subAccounts').prepend(tableRow);
+  }
+
+  function validateGlobalAccountCredentials(freshservice_apikey, freshservice_subdomain) {
+    getTicketFields(freshservice_apikey, freshservice_subdomain).then(function () {
+      $('.loading').hide();
+      $('#step1').hide();
+      $('#step2').show();
+
+      globalAccountValidation = true;
+
+      if (sub_account_credentials.length > 0) {
+        sub_account_credentials.map(function (sub_account_credential) {
+          addNewAccount();
+
+          $(`#apikey${count}`).val(sub_account_credential.apikey);
+          $(`#subdomain${count}`).val(sub_account_credential.subdomain);
+        });
+      } else {
+        addNewAccount();
+      }
+    }, function (err) {
+      if (err.status == 401) {
+        showAlert("step1", "validate1", "alertFailure", "Invalid Freshservice API key");
+      } else if (err.status == 403) {
+        showAlert("step1", "validate1", "alertFailure", "You are not authorized to perform this action");
+      } else if (err.status == 404) {
+        showAlert("step1", "validate1", "alertFailure", "Invalid Freshservice Subdomain");
+      } else if (err.status == 429) {
+        showAlert("step1", "validate1", "alertFailure", "API limit reached");
+      } else {
+        showAlert("step1", "validate1", "alertFailure", "Unable to process the request. Please try again!");
+      }
+    });
+  }
+
+  function validateSubAccountCredentials(sub_account_credentials, inc) {
+    if (sub_account_credentials.length > inc) {
+      let accountCredentials = sub_account_credentials[inc];
+
+      getTicketFields(accountCredentials.apikey, accountCredentials.subdomain).then(function () {
+        inc += 1;
+
+        validateSubAccountCredentials(sub_account_credentials, inc);
+      }, function (err) {
+        subAccountValidation = false;
+
+        if (err.status == 401) {
+          showAlert("step2", "validate2", "alertFailure", `Invalid FreshService API key for ${accountCredentials.subdomain}`);
+        } else if (err.status == 403) {
+          showAlert("step2", "validate2", "alertFailure", `You are not authorized to perform this action for ${accountCredentials.subdomain}`);
+        } else if (err.status == 404) {
+          showAlert("step2", "validate2", "alertFailure", `Invalid FreshService Subdomain for ${accountCredentials.subdomain}`);
+        } else if (err.status == 429) {
+          showAlert("step2", "validate2", "alertFailure", `Invalid FreshService Subdomain for ${accountCredentials.subdomain}`);
+        } else {
+          showAlert("step2", "validate2", "alertFailure", "Unable to process the request. Please try again!");
+        }
+      });
+    } else {
+      subAccountValidation = true;
+
+      showAlert("step2", "validate2", "alertSuccess", "Please click install/save button to proceed");
+    }
+  }
+
+  function checkDuplicate(inputArray) {
+    let result = false;
+
+    for (let i = 0; i < inputArray.length; i++) {
+      for (let j = i + 1; j < inputArray.length; j++) {
+        if (inputArray[i].subdomain == inputArray[j].subdomain) {
+          result = true;
+          break;
+        }
+      }
+      if (result) {
+        break;
+      }
+    }
+
+    return result;
+  }
+
+  function getTicketFields(apikey, subdomain) {
+    return new Promise(function (resolve, reject) {
+      app.initialized().then(function (client) {
+        let url = `https://${subdomain}.freshservice.com/api/v2/ticket_fields`;
+        let options = {
+          headers: {
+            "Authorization": `Basic ${btoa(apikey)}`,
+            "Content-Type": "application/json"
+          }
+        };
+        client.request.get(url, options).then(function (ticketFields) {
+          resolve(ticketFields);
+        }, function (err) {
+          reject(err);
+        });
+      });
+    });
+  }
+
+  function showAlert(divId, buttonId, alertDiv, alertMessage) {
+    $('.loading').hide();
+    $(`#${divId}`).css({ opacity: 1 });
+    $(`#${buttonId}`).attr('disabled', false);
+
+    $('html, body').animate({
+      scrollTop: $("body").offset().top
+    }, 500);
+
+    $(`#${alertDiv}`).text(alertMessage).show();
+    $(`#${alertDiv}`).delay(3000).fadeOut('slow');
+  }
+</script>
+
+</html>
